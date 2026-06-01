@@ -19,12 +19,17 @@ FROM php:8.4-cli-alpine AS production
 WORKDIR /app
 
 RUN apk add --no-cache \
+    icu-libs \
+    libzip \
+    postgresql-libs \
+    zip \
+    unzip \
+    && apk add --no-cache --virtual .build-deps \
     icu-dev \
     oniguruma-dev \
     libzip-dev \
     postgresql-dev \
-    zip \
-    unzip \
+    $PHPIZE_DEPS \
     && docker-php-ext-install \
     pdo \
     pdo_pgsql \
@@ -32,8 +37,9 @@ RUN apk add --no-cache \
     intl \
     mbstring \
     zip \
-    opcache
-    
+    opcache \
+    && apk del .build-deps
+
 COPY --from=vendor /app /app
 
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache

@@ -1,5 +1,14 @@
 .git
+.github
 node_modules
 vendor
-storage/logs/*
 .env
+.env.*
+tests
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+*.tar
+*.tar.gz
+docker-compose.yml
