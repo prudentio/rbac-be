@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Application\Access\ApplicationRoleAccess;
 use App\Models\RoleApplicationAccessView;
 use App\Models\Role;
+use Illuminate\Support\Facades\DB;
 
 class RoleController extends Controller
 {
@@ -96,12 +97,18 @@ class RoleController extends Controller
             'applicationIds.*' => 'exists:applications,id',
         ]);
 
-        foreach ($request->applicationIds as $applicationId) {
-            ApplicationRoleAccess::create([
+        $rows = collect($request->applicationIds)
+            ->unique()
+            ->map(fn ($applicationId) => [
                 'role_id' => $request->roleId,
                 'application_id' => $applicationId,
-            ]);
-        }
+                'created_at' => now(),
+                'updated_at' => now(),
+            ])
+            ->values()
+            ->all();
+
+        ApplicationRoleAccess::insert($rows);
 
         return response()->json([
             'status' => 'success',
@@ -125,14 +132,22 @@ class RoleController extends Controller
             ], 400);
         }
 
-        ApplicationRoleAccess::where('role_id', $id)->delete();
+        DB::transaction(function () use ($request, $id) {
+            ApplicationRoleAccess::where('role_id', $id)->delete();
 
-        foreach ($request->applicationIds as $applicationId) {
-            ApplicationRoleAccess::create([
-                'role_id' => $id,
-                'application_id' => $applicationId,
-            ]);
-        }
+            $rows = collect($request->applicationIds)
+                ->unique()
+                ->map(fn ($applicationId) => [
+                    'role_id' => $id,
+                    'application_id' => $applicationId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])
+                ->values()
+                ->all();
+
+            ApplicationRoleAccess::insert($rows);
+        });
 
         return response()->json([
             'status' => 'success',

@@ -24,6 +24,20 @@ class UserController extends Controller
         return array_values(array_unique($sourceTypes));
     }
 
+    private function mapApplication($app): array
+    {
+        return [
+            'id' => $app->id,
+            'name' => $app->name,
+            'url' => $app->url,
+            'icon' => $app->icon,
+            'category' => $app->category ? [
+                'id' => $app->category->id,
+                'name' => $app->category->name,
+            ] : null,
+        ];
+    }
+
     private function getUserApplications(string $userId, array $sourceTypes = [])
     {
         $accessQuery = UserApplicationAccessView::query()
@@ -34,28 +48,60 @@ class UserController extends Controller
         }
 
         $applicationIds = $accessQuery
-            ->pluck('application_id')
-            ->unique()
-            ->values();
+            ->distinct()
+            ->pluck('application_id');
 
         return Application::query()
             ->with('category')
             ->whereIn('id', $applicationIds)
             ->get(['id', 'name', 'url', 'icon', 'category_id'])
-            ->map(fn ($app) => [
-                'id' => $app->id,
-                'name' => $app->name,
-                'url' => $app->url,
-                'icon' => $app->icon,
-                'category' => $app->category ? [
-                    'id' => $app->category->id,
-                    'name' => $app->category->name,
-                ] : null,
-        ])
-        ->values();
+            ->map(fn ($app) => $this->mapApplication($app))
+            ->values();
     }
 
-    private function mapUser($user, array $sourceTypes = []): array
+    private function getUsersApplications($userIds, array $sourceTypes = [])
+    {
+        $accessQuery = UserApplicationAccessView::query()
+            ->whereIn('user_id', $userIds);
+
+        if (!empty($sourceTypes)) {
+            $accessQuery->whereIn('source_type', $sourceTypes);
+        }
+
+        $accessRows = $accessQuery
+            ->get(['user_id', 'application_id']);
+
+        $applicationIds = $accessRows
+            ->pluck('application_id')
+            ->unique()
+            ->values();
+
+        $applications = Application::query()
+            ->with('category')
+            ->whereIn('id', $applicationIds)
+            ->get(['id', 'name', 'url', 'icon', 'category_id'])
+            ->keyBy('id');
+
+        return $accessRows
+            ->groupBy('user_id')
+            ->map(function ($rows) use ($applications) {
+                return $rows
+                    ->pluck('application_id')
+                    ->unique()
+                    ->map(function ($applicationId) use ($applications) {
+                        $app = $applications->get($applicationId);
+
+                        if (!$app) {
+                            return null;
+                        }
+
+                        return $this->mapApplication($app);
+                    })
+                    ->values();
+            });
+    }
+
+    private function mapUser($user, array $sourceTypes = [], $applications = null): array
     {
         $result = [
             'id' => $user->id,
@@ -77,7 +123,7 @@ class UserController extends Controller
         ];
 
         if (!empty($sourceTypes)) {
-            $result['applications'] = $this->getUserApplications(
+            $result['applications'] = $applications ?? $this->getUserApplications(
                 $user->id,
                 $sourceTypes
             );
@@ -88,8 +134,8 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $page = (int) $request->query('page', 1);
-        $perPage = (int) $request->query('perPage', 10);
+        $page = max((int) $request->query('page', 1), 1);
+        $perPage = min(max((int) $request->query('perPage', 10), 1), 100);
 
         $sourceTypes = $this->normalizeSourceTypes(
             $request->query('sourceTypes', [])
@@ -104,9 +150,22 @@ class UserController extends Controller
             ->take($perPage)
             ->get();
 
-        $data = $users->map(
-            fn ($user) => $this->mapUser($user, $sourceTypes)
-        );
+        $applicationsByUser = collect();
+
+        if (!empty($sourceTypes)) {
+            $applicationsByUser = $this->getUsersApplications(
+                $users->pluck('id'),
+                $sourceTypes
+            );
+        }
+
+        $data = $users
+            ->map(fn ($user) => $this->mapUser(
+                $user,
+                $sourceTypes,
+                $applicationsByUser->get($user->id, collect())
+            ))
+            ->values();
 
         return response()->json([
             'status' => 'success',
@@ -114,15 +173,13 @@ class UserController extends Controller
             'pagination' => [
                 'page' => $page,
                 'perPage' => $perPage,
-                'totalItems' => $totalItems
-            ]
+                'totalItems' => $totalItems,
+            ],
         ], 200);
     }
 
     public function show(Request $request, $id)
     {
-        $includeApplications = $request->boolean('includeApplications');
-
         $sourceTypes = $this->normalizeSourceTypes(
             $request->query('sourceTypes', [])
         );
@@ -132,10 +189,10 @@ class UserController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->mapUser($user, $sourceTypes)
+            'data' => $this->mapUser($user, $sourceTypes),
         ], 200);
     }
-    
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -156,7 +213,7 @@ class UserController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $user
+            'data' => $user,
         ], 201);
     }
 
@@ -188,13 +245,13 @@ class UserController extends Controller
         if (!$updated) {
             return response()->json([
                 'status' => 'failed',
-                'message' => 'User not found or not updated'
+                'message' => 'User not found or not updated',
             ], 400);
         }
 
         return response()->json([
             'status' => 'success',
-            'data' => 'ok'
+            'data' => 'ok',
         ], 200);
     }
 
@@ -205,13 +262,13 @@ class UserController extends Controller
         if (!$deleted) {
             return response()->json([
                 'status' => 'failed',
-                'message' => 'User not found or not deleted'
+                'message' => 'User not found or not deleted',
             ], 400);
         }
 
         return response()->json([
             'status' => 'success',
-            'data' => 'ok'
+            'data' => 'ok',
         ], 200);
     }
 }

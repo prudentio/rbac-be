@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Application\Access\ApplicationDepartmentAccess;
 use App\Models\Department;
+use Illuminate\Support\Facades\DB;
 
 class DepartmentController extends Controller
 {
@@ -97,12 +98,18 @@ class DepartmentController extends Controller
             'applicationIds.*' => 'exists:applications,id',
         ]);
 
-        foreach ($request->applicationIds as $applicationId) {
-            ApplicationDepartmentAccess::create([
-                'department_id' => $request->departmentId,
-                'application_id' => $applicationId,
-            ]);
-        }
+        $rows = collect($request->applicationIds)
+                ->unique()
+                ->map(fn ($applicationId) => [
+                    'department_id' => $request->departmentId,
+                    'application_id' => $applicationId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])
+                ->values()
+                ->all();
+
+        ApplicationDepartmentAccess::insert($rows);
 
         return response()->json([
             'status' => 'success',
@@ -126,14 +133,22 @@ class DepartmentController extends Controller
             ], 400);
         }
 
-        ApplicationDepartmentAccess::where('department_id', $id)->delete();
+        DB::transaction(function () use ($request, $id) {
+            ApplicationDepartmentAccess::where('department_id', $id)->delete();
 
-        foreach ($request->applicationIds as $applicationId) {
-            ApplicationDepartmentAccess::create([
-                'department_id' => $id,
-                'application_id' => $applicationId,
-            ]);
-        }
+            $rows = collect($request->applicationIds)
+                ->unique()
+                ->map(fn ($applicationId) => [
+                    'department_id' => $id,
+                    'application_id' => $applicationId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])
+                ->values()
+                ->all();
+
+            ApplicationDepartmentAccess::insert($rows);
+        });
 
         return response()->json([
             'status' => 'success',

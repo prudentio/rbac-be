@@ -46,11 +46,6 @@ Route::middleware('auth:api')->group(function () {
                 Route::patch('/{id}', [UserController::class, 'userUpdate']);
                 Route::delete('/{id}', [UserController::class, 'userDestroy']);
             });
-
-            Route::prefix('matrix')->group(function () {
-                Route::get('/', [MatrixController::class, 'index']);
-                Route::get('/{id}', [MatrixController::class, 'show']);
-            });
         });
 
         Route::get('/', [ApplicationController::class, 'index']);

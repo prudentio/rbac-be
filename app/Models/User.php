@@ -24,14 +24,13 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'department_id',
         'role_id',
-        'password'
     ];
 
     protected $hidden = [
         'password',
     ];
 
-       public function department()
+    public function department()
     {
         return $this->belongsTo(
             Department::class,

@@ -23,7 +23,7 @@ class AuthController extends Controller
             'data' => [
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'expires_in' => auth('api')->factory()->getTTL() * 60 * 60 * 60,
+                'expires_in' => auth('api')->factory()->getTTL() * 60,
             ],
         ], 200);
     }
